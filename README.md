@@ -13,3 +13,6 @@ CPU Speed: 80 MHz
 
 Flash Size: 4MB,  1019 kB OTA 
 
+# FunLevel
+1
+
