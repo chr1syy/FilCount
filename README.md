@@ -13,6 +13,10 @@ CPU Speed: 80 MHz
 
 Flash Size: 4MB,  1019 kB OTA 
 
+# Libraries
+
+https://github.com/enjoyneering/RotaryEncoder
+
 # FunLevel
 mindestens 2
 
