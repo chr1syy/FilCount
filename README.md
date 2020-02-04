@@ -16,6 +16,7 @@ Flash Size: 4MB,  1019 kB OTA
 # Libraries
 
 https://github.com/enjoyneering/RotaryEncoder
+https://github.com/olikraus/U8g2_for_Adafruit_GFX
 
 # FunLevel
 mindestens 2
