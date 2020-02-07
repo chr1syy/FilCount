@@ -27,8 +27,9 @@
 #define DISPLAY_MENU 2
 #define DISPLAY_CONFIG 3
 
-#define TEXT_FONT u8g2_font_unifont_tf
-#define TEXT_FONT_HEIGTH 10
+#define TEXT_FONT       u8g2_font_unifont_tf  // 10 pixel height
+#define MENU_ITEM_FONT  u8g2_font_t0_11_te    // 8 pixel height
+#define TEXT_FONT_HEIGHT 10
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 U8G2_FOR_ADAFRUIT_GFX u8g2;
@@ -67,18 +68,18 @@ long lastUpdateMillis = 0;
 
 void showMenu();
 
-// pos      = X position in pixel (CENTER for centered output)
-// line     = Y position in lines
+// posX     = X position in pixel (CENTER for centered output)
+// posY     = Y position in pixel (BOTTOM LEFT)
 // text     = Text to print
 // invers   = Print text inverted (true/false)
 // addLines = Char to add before and after text (eg. for menu titles)
-void printC(int pos, int line, char* text, boolean invers = false, char* addDeco = NULL) {
+void printC(int posX, int posY, char* text, boolean invers = false, char* addDeco = NULL) {
   char ptext[strlen(text)+2];
   int plen;
-  int lineHeight = u8g2.getFontAscent()+2;
+  int lineHeight = u8g2.getFontAscent()+2;    // +2 because umlauts :)
 
-  int textY = (lineHeight + 1) * line;        // (0,0) is bottom left
-  int drawY = textY - lineHeight;             // (0,0) is top left
+  int textY = posY;                           // (0,0) is bottom left
+  int drawY = posY +2 - lineHeight;              // (0,0) is top left
 
   // do we have to add something?
   if(addDeco != NULL) {
@@ -86,29 +87,30 @@ void printC(int pos, int line, char* text, boolean invers = false, char* addDeco
     strcpy(ptext + 1, text);                    // now the text
     strcpy(ptext + strlen(text) + 1, addDeco);  // and one after
   } else {
-    strcpy(ptext, text);                      // or ... just use the text
+    strcpy(ptext, text);                        // or ... just use the text
   }
 
   // ok, now the length is fixed
   plen = u8g2.getUTF8Width(ptext);
 
   // do we have to change the position for x?
-  if(pos == CENTER) {
-    pos = (int)((SCREEN_WIDTH - (plen + u8g2.getUTF8Width("A")) )/2); // Add a char because reasons o_O
+  if(posX == CENTER) {
+    posX = (int)((SCREEN_WIDTH - (plen + u8g2.getUTF8Width("A")) )/2); // Add a char because reasons o_O
   }
 
   // ok, position is fixed, too
   // can't get u8g2 to print inversed text, so I make my own
   if(invers) {
-    display.fillRect(pos, drawY, plen + 1 , lineHeight + 1, WHITE);
+    u8g2.setFontMode(1);
+    display.fillRect(posX, drawY, plen + 1 , lineHeight + 1, WHITE);
     u8g2.setForegroundColor(BLACK);
   } else {
+    u8g2.setFontMode(0);
     u8g2.setForegroundColor(WHITE);
   }
-  
+Serial.print("ptext: "); Serial.println(ptext);
   // and now we print
-  u8g2.setFont(u8g2_font_unifont_tf); // 10 pixel font / TODO: make variable
-  u8g2.setCursor(pos, textY);
+  u8g2.setCursor(posX, textY);
   u8g2.println(ptext); 
 }
 
@@ -130,20 +132,32 @@ void ICACHE_RAM_ATTR handleRotRight() {
 }
 
 void showMenu(char state[20]){
-  // Show Startup
-  //detachInterrupt(digitalPinToInterrupt(D7));
-  display.clearDisplay();
-  u8g2.setFontMode(1);
-  printC(CENTER, 1, MSG_MENU_TITLE, true, "-");
-  printC(CENTER, 2, MSG_MENU_TITLE, true, "-");
-  /*u8g2.setForegroundColor(WHITE);
-  u8g2.setFont(TEXT_FONT); // 10 pixel font
-  u8g2.setCursor(0, 11);
-  u8g2.println(MSG_MENU_TITLE); */
+  char* items[] = { MSG_MENU_ITEM_1, MSG_MENU_ITEM_2, MSG_MENU_ITEM_3, MSG_MENU_ITEM_4 };
+  int lineHeight;
+  int nextLineAt = 0;
+  int counter = 0;
   
+  display.clearDisplay();
+  u8g2.setFont(TEXT_FONT);
+  lineHeight = u8g2.getFontAscent()+2;    // +2 because umlauts :)
+  
+  // build menu
+  if(strcmp(state, "init") == 0) {
+    printC(CENTER, lineHeight, MSG_MENU_TITLE, false, "-");
+    display.drawLine(0, lineHeight+2, SCREEN_WIDTH, lineHeight+2, WHITE);
+
+    nextLineAt = lineHeight * 2;    
+    u8g2.setFont(MENU_ITEM_FONT);
+    lineHeight = u8g2.getFontAscent()+2;
+
+    while(nextLineAt < SCREEN_HEIGHT-12 && counter < (sizeof(items) / sizeof(items[0]))) {  // as long as we see something and are not out of items to display     
+      printC(CENTER, nextLineAt, items[counter++]);
+      nextLineAt += lineHeight;  
+    }
+  }
+Serial.print("Counter: "); Serial.println(counter);
+delay(2000);
   display.display();
-  delay(3000);  
-  //attachInterrupt(digitalPinToInterrupt(D7), handleKey, RISING);
 }
 
 void getRolls() {
@@ -161,14 +175,15 @@ void showStart(){
   // RealityCheck: for now (and probably forever) some boring infos
   display.clearDisplay();
   u8g2.setForegroundColor(WHITE);
-  u8g2.setFont(u8g2_font_unifont_tf); // 10 pixel font
+  u8g2.setFont(TEXT_FONT); // 10 pixel font
   u8g2.setCursor(0, 11);
   u8g2.println(MSG_TITLE);
+  u8g2.setFont(MENU_ITEM_FONT);
   u8g2.println(MSG_INIT);
   display.display();
-  delay(3000);
 }
-void setup() {     
+void setup() { 
+  Serial.begin(115200);    
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   u8g2.begin(display);
   displayStatus = DISPLAY_INIT;
@@ -183,11 +198,13 @@ void setup() {
   
   myEnc.setPosition(0);
   displayStatus = DISPLAY_COUNTING;
+  Serial.println("Hello\n");
 }
 
 void loop() {
+  u8g2.setFont(TEXT_FONT);
   if(isButtonPressed) {
-    u8g2.println(displayStatus);
+    isButtonPressed = false;
     switch(displayStatus) {
       case DISPLAY_INIT:
             // do nothing
@@ -203,7 +220,10 @@ void loop() {
             break;
       default:
             break;
-    }    
+    }
+    
+    delay(50);
+    Serial.println("Done");    
   } else {
   // Falls im letzten Loop-Durchlauf der Zählmodus aktiviert wurde, springe in while-loop
   if(posChanged && displayStatus == DISPLAY_COUNTING){
@@ -220,6 +240,7 @@ void loop() {
     u8g2.print(oldPos);
     display.display();
     posChanged = false;
+
 /*
     // Wenn auf den Knopf gedrückt wird
     if (isButtonPressed && millis() - lastUpdateMillis > 50) {
