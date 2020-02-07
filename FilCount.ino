@@ -139,7 +139,7 @@ void showMenu(char state[20]){
   
   display.clearDisplay();
   u8g2.setFont(TEXT_FONT);
-  lineHeight = u8g2.getFontAscent()+2;    // +2 because umlauts :)
+  lineHeight = u8g2.getFontAscent()+4;    // +4 because umlauts and some air:)
   
   // build menu
   if(strcmp(state, "init") == 0) {
@@ -150,13 +150,12 @@ void showMenu(char state[20]){
     u8g2.setFont(MENU_ITEM_FONT);
     lineHeight = u8g2.getFontAscent()+2;
 
-    while(nextLineAt < SCREEN_HEIGHT-12 && counter < (sizeof(items) / sizeof(items[0]))) {  // as long as we see something and are not out of items to display     
+    while(nextLineAt < SCREEN_HEIGHT && counter < (sizeof(items) / sizeof(items[0]))) {  // as long as we see something and are not out of items to display     
       printC(CENTER, nextLineAt, items[counter++]);
       nextLineAt += lineHeight;  
     }
   }
 Serial.print("Counter: "); Serial.println(counter);
-delay(2000);
   display.display();
 }
 
