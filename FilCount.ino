@@ -40,7 +40,10 @@ U8G2_FOR_ADAFRUIT_GFX u8g2;
 // SW - D7
 // + - 3.3
 // GND - G
+#define LEFT true
+#define RIGHT false
 RotaryEncoder myEnc(D5, D6, D7);
+int16_t position = 1;  // Init screen resets position to 0, so change position is triggered and counter will be shown
 
 // Variables
 struct filamentRolls
@@ -54,11 +57,9 @@ filamentRolls rolls[NUMBER_OF_SPOOLS];
 int oldPos = 0;
 int newPos = 0;
 int selected = 0;
-boolean spoolDirection = true; // true = left, false = right;
-boolean buttonDirection = true;
-
+boolean spoolDirection = LEFT;
+boolean buttonDirection;
 boolean isButtonPressed = false;
-boolean posChanged = true;  // True for initial display of counter
 int displayStatus = DISPLAY_INIT;
 
 boolean isCounting = true;
@@ -67,6 +68,7 @@ boolean isConfig = false;
 long lastUpdateMillis = 0;
 
 void showMenu();
+void showCounting();
 
 // posX     = X position in pixel (CENTER for centered output)
 // posY     = Y position in pixel (BOTTOM LEFT)
@@ -79,7 +81,7 @@ void printC(int posX, int posY, char* text, boolean invers = false, char* addDec
   int lineHeight = u8g2.getFontAscent()+2;    // +2 because umlauts :)
 
   int textY = posY;                           // (0,0) is bottom left
-  int drawY = posY +2 - lineHeight;              // (0,0) is top left
+  int drawY = posY +1 - lineHeight;              // (0,0) is top left
 
   // do we have to add something?
   if(addDeco != NULL) {
@@ -102,13 +104,13 @@ void printC(int posX, int posY, char* text, boolean invers = false, char* addDec
   // can't get u8g2 to print inversed text, so I make my own
   if(invers) {
     u8g2.setFontMode(1);
-    display.fillRect(posX, drawY, plen + 1 , lineHeight + 1, WHITE);
+    display.fillRect(posX, drawY, plen + 1 , lineHeight + 2, WHITE);
     u8g2.setForegroundColor(BLACK);
   } else {
     u8g2.setFontMode(0);
     u8g2.setForegroundColor(WHITE);
   }
-Serial.print("ptext: "); Serial.println(ptext);
+
   // and now we print
   u8g2.setCursor(posX, textY);
   u8g2.println(ptext); 
@@ -116,46 +118,68 @@ Serial.print("ptext: "); Serial.println(ptext);
 
 // Interrupt handler
 void ICACHE_RAM_ATTR handleKey() {
+  //myEnc.readPushButton();  
   isButtonPressed = true;
 }
 
-void ICACHE_RAM_ATTR handleRotLeft() {
-  myEnc.readAB();
-  buttonDirection = true;
-  posChanged = true;
+boolean getDirection() {
+  static int oldDPos;
+  int newDPos;
+  boolean dir;
+  
+  newDPos = myEnc.getPosition();
+  dir = newDPos > oldDPos ? LEFT : RIGHT;
+  oldDPos = newDPos;
+  return dir;
 }
 
-void ICACHE_RAM_ATTR handleRotRight() {
+void ICACHE_RAM_ATTR handleRotation() {
   myEnc.readAB();
-  buttonDirection = false;
-  posChanged = true;
 }
 
 void showMenu(char state[20]){
   char* items[] = { MSG_MENU_ITEM_1, MSG_MENU_ITEM_2, MSG_MENU_ITEM_3, MSG_MENU_ITEM_4 };
+  int items_size = sizeof(items) / sizeof(items[0]);
+  
   int lineHeight;
   int nextLineAt = 0;
   int counter = 0;
+  boolean buttonDirection;
+  static int item_selected = 0;
+
+  displayStatus = DISPLAY_MENU;
+  buttonDirection = getDirection();  
+
+  if(strcmp(state, "item_switched") == 0) {
+    if(buttonDirection == LEFT && item_selected > 0) item_selected--;
+    if(buttonDirection == RIGHT && item_selected < (items_size - 1)) item_selected++;
+  }
+
+  if(strcmp(state, "item_selected") == 0) {
+    if(item_selected == 0) {
+      displayStatus = DISPLAY_COUNTING;
+      showCounting();
+      return;
+    }
+  }
+  
+  if(strcmp(state, "init") == 0) {} // placeholder
   
   display.clearDisplay();
   u8g2.setFont(TEXT_FONT);
-  lineHeight = u8g2.getFontAscent()+4;    // +4 because umlauts and some air:)
-  
-  // build menu
-  if(strcmp(state, "init") == 0) {
-    printC(CENTER, lineHeight, MSG_MENU_TITLE, false, "-");
-    display.drawLine(0, lineHeight+2, SCREEN_WIDTH, lineHeight+2, WHITE);
+  lineHeight = u8g2.getFontAscent()+4;    // +4 because umlauts and some air:)  
+  printC(CENTER, lineHeight, MSG_MENU_TITLE, false, "-");
+  display.drawLine(0, lineHeight+2, SCREEN_WIDTH, lineHeight+2, WHITE);
 
-    nextLineAt = lineHeight * 2;    
-    u8g2.setFont(MENU_ITEM_FONT);
-    lineHeight = u8g2.getFontAscent()+2;
+  nextLineAt = lineHeight * 2;    
+  u8g2.setFont(MENU_ITEM_FONT);
+  lineHeight = u8g2.getFontAscent()+2;
 
-    while(nextLineAt < SCREEN_HEIGHT && counter < (sizeof(items) / sizeof(items[0]))) {  // as long as we see something and are not out of items to display     
-      printC(CENTER, nextLineAt, items[counter++]);
-      nextLineAt += lineHeight;  
-    }
+  while(nextLineAt < SCREEN_HEIGHT && counter < items_size) {  // as long as we see something and are not out of items to display     
+    printC(CENTER, nextLineAt, items[counter], (counter == item_selected ? true : false) );
+    nextLineAt += lineHeight;
+    counter++;
   }
-Serial.print("Counter: "); Serial.println(counter);
   display.display();
 }
 
@@ -180,22 +204,38 @@ void showStart(){
   u8g2.setFont(MENU_ITEM_FONT);
   u8g2.println(MSG_INIT);
   display.display();
+  delay(2000);
 }
+
+void showCounting() {
+  selected = 0;
+  display.clearDisplay();
+  u8g2.setCursor(0,11);
+  u8g2.print(rolls[selected].name);  
+  u8g2.setCursor(55,40);
+  
+  // Werte zählen und anzeigen
+  newPos = myEnc.getPosition();
+  oldPos = newPos;
+  u8g2.print(oldPos);
+  display.display();
+}
+
 void setup() { 
   Serial.begin(115200);    
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   u8g2.begin(display);
   displayStatus = DISPLAY_INIT;
-  myEnc.begin();
   getRolls();
   showStart();
 
   // Interrupt auf Pin D7 für Button, D5 & D6 für Rotary -> funktioniert schlechter als DO_NOT_USE_INTERRUPTS
-  attachInterrupt(digitalPinToInterrupt(D5), handleRotLeft, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(D6), handleRotRight, CHANGE);
+  myEnc.begin();
+  attachInterrupt(digitalPinToInterrupt(D5), handleRotation, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(D6), handleRotation, CHANGE);
   attachInterrupt(digitalPinToInterrupt(D7), handleKey, RISING);
-  
   myEnc.setPosition(0);
+  
   displayStatus = DISPLAY_COUNTING;
   Serial.println("Hello\n");
 }
@@ -219,27 +259,25 @@ void loop() {
             break;
       default:
             break;
-    }
-    
+    }    
     delay(50);
     Serial.println("Done");    
-  } else {
-  // Falls im letzten Loop-Durchlauf der Zählmodus aktiviert wurde, springe in while-loop
-  if(posChanged && displayStatus == DISPLAY_COUNTING){
-    selected = 0;
-    display.clearDisplay();
-    u8g2.setCursor(0,11);
-    u8g2.print(rolls[selected].name);  
-    u8g2.setCursor(55,40);
+  }
 
-    // Werte zählen und anzeigen
-    newPos = myEnc.getPosition();
-    oldPos = newPos;
-
-    u8g2.print(oldPos);
-    display.display();
-    posChanged = false;
-
+  if(position != myEnc.getPosition()) {
+    position = myEnc.getPosition();
+    switch(displayStatus){
+      case DISPLAY_COUNTING:
+            showCounting();
+            break;
+      case DISPLAY_MENU:
+            showMenu("item_switched");
+            break;
+      default:
+            break;
+    }
+  }
+  
 /*
     // Wenn auf den Knopf gedrückt wird
     if (isButtonPressed && millis() - lastUpdateMillis > 50) {
@@ -255,8 +293,6 @@ void loop() {
       break;
     }
     */
-  }
-  } 
 
 // ab hier ... Chaos :D Working chaos, but still...
 /*
