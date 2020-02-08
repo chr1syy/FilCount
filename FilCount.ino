@@ -237,11 +237,14 @@ void setup() {
   myEnc.setPosition(0);
   
   displayStatus = DISPLAY_COUNTING;
-  Serial.println("Hello\n");
 }
 
 void loop() {
   u8g2.setFont(TEXT_FONT);
+  if (isButtonPressed && millis() - lastUpdateMillis > 50) {  
+    isButtonPressed = false;
+    lastUpdateMillis = millis();
+  }  
   if(isButtonPressed) {
     isButtonPressed = false;
     switch(displayStatus) {
@@ -259,9 +262,8 @@ void loop() {
             break;
       default:
             break;
-    }    
+    }
     delay(50);
-    Serial.println("Done");    
   }
 
   if(position != myEnc.getPosition()) {
