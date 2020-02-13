@@ -31,6 +31,15 @@
 #define DISPLAY_COUNTING 1
 #define DISPLAY_MENU 2
 #define DISPLAY_CONFIG 3
+#define DISPLAY_SPOOLSELECT 4
+#define DISPLAY_SELECTION 5
+
+#define ITEM_SELECTED 1
+#define ITEM_SWITCHED 2
+#define INIT          3
+#define BACK 1
+#define SELECT 2
+#define CANCEL 3
 
 // Fonts
 #define TEXT_FONT       u8g2_font_unifont_tf  // 10 pixel height
@@ -82,6 +91,8 @@ long lastUpdateMillis = 0;
 void showMenu();
 void showCounting();
 void saveSpools();
+void selectSpool(int);
+void showSelection(int);
 
 // posX     = X position in pixel (CENTER for centered output)
 // posY     = Y position in pixel (BOTTOM LEFT)
@@ -131,8 +142,15 @@ void printC(int posX, int posY, char* text, boolean invers = false, char* addDec
 
 // Interrupt handler
 void ICACHE_RAM_ATTR handleKey() {
-  //myEnc.readPushButton();  
-  isButtonPressed = true;
+  static unsigned long last_interrupt_time = 0;
+  unsigned long interrupt_time = millis();
+  
+  // If interrupts come faster than 200ms, assume it's a bounce and ignore
+  if (interrupt_time - last_interrupt_time > 400)
+  {
+    isButtonPressed = true;
+  }
+  last_interrupt_time = interrupt_time;
 }
 
 void ICACHE_RAM_ATTR handleRotation() {
@@ -150,7 +168,7 @@ boolean getDirection() {
   return dir;
 }
 
-void showMenu(char state[20]){
+void showMenu(int state){
   char* items[] = { MSG_MENU_ITEM_1, MSG_MENU_ITEM_2, MSG_MENU_ITEM_3, MSG_MENU_ITEM_4 };
   int items_size = sizeof(items) / sizeof(items[0]);
   
@@ -163,20 +181,28 @@ void showMenu(char state[20]){
   displayStatus = DISPLAY_MENU;
   buttonDirection = getDirection();  
 
-  if(strcmp(state, "item_switched") == 0) {
+  if(state == ITEM_SWITCHED) {
     if(buttonDirection == LEFT && item_selected > 0) item_selected--;
     if(buttonDirection == RIGHT && item_selected < (items_size - 1)) item_selected++;
   }
 
-  if(strcmp(state, "item_selected") == 0) {
-    if(item_selected == 0) {
-      displayStatus = DISPLAY_COUNTING;
-      showCounting();
-      return;
+  if(state == ITEM_SELECTED) {
+    switch(item_selected) {
+      case 0:
+          myEnc.setPosition(oldPos);  // continue where we left
+          showCounting();
+          return;
+          break;
+      case 1:
+          selectSpool(ITEM_SELECTED);
+          return;
+          break;
+      default:
+          break;
     }
   }
   
-  if(strcmp(state, "init") == 0) {} // placeholder
+  if(state == INIT) {} // placeholder
   
   display.clearDisplay();
   u8g2.setFont(TEXT_FONT);
@@ -275,6 +301,29 @@ void saveSpools() {
   //Serial.println();
 }
 
+void selectSpool(int state){
+  int lineHeight;
+
+  displayStatus = DISPLAY_SPOOLSELECT;
+  display.clearDisplay();
+  u8g2.setFont(TEXT_FONT);
+  lineHeight = u8g2.getFontAscent()+4;    // +4 because umlauts and some air:)  
+  printC(CENTER, lineHeight, MSG_SPOOL_TITLE, false, "-");
+  display.drawLine(0, lineHeight+2, SCREEN_WIDTH, lineHeight+2, WHITE);
+    
+  display.display();
+  
+  Serial.println("Look at these spools!");
+  return;
+}
+
+void showSelection(int state){
+  displayStatus = DISPLAY_SELECTION;
+  display.fillRect(20, 10, 88, 44, BLACK);
+  display.drawRect(20, 10, 88, 44, WHITE);
+  display.display();
+}
+
 void showStart(){
   // TODO: a nice an breathtaking startup sequence with gfx, animation and totally important information
   // RealityCheck: for now (and probably forever) some boring infos
@@ -291,7 +340,10 @@ void showStart(){
 
 void showCounting() {
   selected = 0;
+
+  displayStatus = DISPLAY_COUNTING;
   display.clearDisplay();
+  u8g2.setFont(TEXT_FONT);
   u8g2.setCursor(0,11);
   u8g2.print(spools[selected].name);  
   u8g2.setCursor(55,40);
@@ -354,10 +406,7 @@ void setup() {
 
 void loop() {
   u8g2.setFont(TEXT_FONT);
-  if (isButtonPressed && millis() - lastUpdateMillis > 50) {  
-    isButtonPressed = false;
-    lastUpdateMillis = millis();
-  }  
+  
   if(isButtonPressed) {
     isButtonPressed = false;
     switch(displayStatus) {
@@ -365,18 +414,21 @@ void loop() {
             // do nothing
             break;
       case DISPLAY_COUNTING:
-            showMenu("init");
+            showMenu(INIT);
             break;
       case DISPLAY_MENU:
-            showMenu("item_selected");
+            showMenu(ITEM_SELECTED);
             break;
       case DISPLAY_CONFIG:
-            //showConfig("item_selected");
+            //showConfig(ITEM_SELECTED);
             break;
+      case DISPLAY_SPOOLSELECT:
+            showSelection(INIT);
+            break;            
       default:
             break;
     }
-    delay(50);
+    //delay(50);
   }
 
   if(position != myEnc.getPosition()) {
@@ -386,7 +438,7 @@ void loop() {
             showCounting();
             break;
       case DISPLAY_MENU:
-            showMenu("item_switched");
+            showMenu(ITEM_SWITCHED);
             break;
       default:
             break;
