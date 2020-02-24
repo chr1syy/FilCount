@@ -319,8 +319,51 @@ void selectSpool(int state){
 
 void showSelection(int state){
   displayStatus = DISPLAY_SELECTION;
+  char* items[] = { MSG_SPOOL_BACK, MSG_SPOOL_SELECT, MSG_SPOOL_CANCEL };
+  int items_size = 3;
+  int lineHeight, nextLineAt;
+  boolean buttonDirection;
+  int counter = 0;
+  static int item_selected = 0;
+
+  buttonDirection = getDirection();  
+
+  if(state == ITEM_SWITCHED) {
+    if(buttonDirection == LEFT && item_selected > 0) item_selected--;
+    if(buttonDirection == RIGHT && item_selected < (items_size - 1)) item_selected++;
+  }
+
+  if(state == ITEM_SELECTED) {
+    switch(item_selected) {
+      case 0:
+          showMenu(ITEM_SELECTED);
+          return;
+          break;
+      case 1:
+          selectSpool(ITEM_SELECTED); // TODO: Spool_selected
+          return;
+          break;
+      case 2:
+          showMenu(INIT);
+          return;
+          break;
+      default:
+          break;
+    }
+  }
+      
+  u8g2.setFont(MENU_ITEM_FONT);
+  lineHeight = u8g2.getFontAscent()+2;
+  nextLineAt = lineHeight * 2 + 2 ;  // Can't remember why *2 but it works
+  
   display.fillRect(20, 10, 88, 44, BLACK);
   display.drawRect(20, 10, 88, 44, WHITE);
+
+  while(counter < items_size) {
+    printC(CENTER, nextLineAt, items[counter], (counter == item_selected ? true : false) );
+    nextLineAt += lineHeight;
+    counter++;
+  }  
   display.display();
 }
 
@@ -424,6 +467,9 @@ void loop() {
             break;
       case DISPLAY_SPOOLSELECT:
             showSelection(INIT);
+            break;
+      case DISPLAY_SELECTION:
+            showSelection(ITEM_SELECTED);
             break;            
       default:
             break;
@@ -439,6 +485,9 @@ void loop() {
             break;
       case DISPLAY_MENU:
             showMenu(ITEM_SWITCHED);
+            break;
+      case DISPLAY_SELECTION:
+            showSelection(ITEM_SWITCHED);
             break;
       default:
             break;
