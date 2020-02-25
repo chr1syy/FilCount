@@ -34,9 +34,10 @@
 #define DISPLAY_SPOOLSELECT 4
 #define DISPLAY_SELECTION 5
 
-#define ITEM_SELECTED 1
-#define ITEM_SWITCHED 2
-#define INIT          3
+#define ITEM_SELECTED  1
+#define ITEM_SWITCHED  2
+#define INIT           3
+#define SPOOL_SELECTED 4
 #define BACK 1
 #define SELECT 2
 #define CANCEL 3
@@ -69,6 +70,7 @@ int16_t position = 1;  // Init screen resets position to 0, so change position i
 struct filamentSpools
   {
     int id;
+    String ident;
     String name;
     int length;
   };
@@ -78,6 +80,8 @@ int spoolCnt = 0;
 int oldPos = 0;
 int newPos = 0;
 int selected = 0;
+int lineHeightText = 0;
+int lineHeightMenu = 0;
 boolean spoolDirection = LEFT;
 boolean buttonDirection;
 boolean isButtonPressed = false;
@@ -122,6 +126,12 @@ void printC(int posX, int posY, char* text, boolean invers = false, char* addDec
   // do we have to change the position for x?
   if(posX == CENTER) {
     posX = (int)((SCREEN_WIDTH - (plen + u8g2.getUTF8Width("A")) )/2); // Add a char the size of an "A" because reasons o_O
+  }
+  if(posX == LEFT) {
+    posX = 1;
+  }
+  if(posX == RIGHT) {
+    posX = (int)(SCREEN_WIDTH - (plen + u8g2.getUTF8Width("A")) );
   }
 
   // ok, position is fixed, too
@@ -177,11 +187,17 @@ void showMenu(int state){
   int counter = 0;
   boolean buttonDirection;
   static int item_selected = 0;
+  static int buff = 0;
 
   displayStatus = DISPLAY_MENU;
   buttonDirection = getDirection();  
 
   if(state == ITEM_SWITCHED) {
+    if(buff == 0) { // only every 2nd step
+      buff = 1;
+      return;
+    }
+    buff = 0;    
     if(buttonDirection == LEFT && item_selected > 0) item_selected--;
     if(buttonDirection == RIGHT && item_selected < (items_size - 1)) item_selected++;
   }
@@ -194,7 +210,7 @@ void showMenu(int state){
           return;
           break;
       case 1:
-          selectSpool(ITEM_SELECTED);
+          selectSpool(INIT);
           return;
           break;
       default:
@@ -206,13 +222,13 @@ void showMenu(int state){
   
   display.clearDisplay();
   u8g2.setFont(TEXT_FONT);
-  lineHeight = u8g2.getFontAscent()+4;    // +4 because umlauts and some air:)  
+  lineHeight = lineHeightText;
   printC(CENTER, lineHeight, MSG_MENU_TITLE, false, "-");
   display.drawLine(0, lineHeight+2, SCREEN_WIDTH, lineHeight+2, WHITE);
 
   nextLineAt = lineHeight * 2;    
   u8g2.setFont(MENU_ITEM_FONT);
-  lineHeight = u8g2.getFontAscent()+2;
+  lineHeight = lineHeightMenu;
 
   while(nextLineAt < SCREEN_HEIGHT && counter < items_size) {  // as long as we see something and are not out of items to display     
     printC(CENTER, nextLineAt, items[counter], (counter == item_selected ? true : false) );
@@ -245,6 +261,8 @@ void loadSpools() {
         tmpId = jspools[i]["id"];   // JsonArray is overloaded in mysterious ways ;)
         if(tmpId != 0) {
           spools[i].id     = tmpId;
+          tmpName          = jspools[i]["ident"];
+          spools[i].ident  = String(tmpName);
           tmpName          = jspools[i]["name"];
           spools[i].name   = String(tmpName);
           spools[i].length = jspools[i]["length"];
@@ -263,22 +281,22 @@ void loadSpools() {
   }
 
   if(failed) {
-    spools[0] = {1, DUMMY_SPOOL, 0};
+    spools[0] = {1, "SP-01", DUMMY_SPOOL, 0};
     spoolCnt = 1;
     saveSpools();
   }    
   /*
-  spools[0] = {1, "PLA Rot", 22};
-  spools[1] = {2, "PETG Blau", 0};
-  spools[2] = {3, "TPU Lila", 50};
+  spools[0] = {1, "SP-01", "PLA Rot", 22};
+  spools[1] = {2, "SP-02", "PETG Blau", 0};
+  spools[2] = {3, "SP-03", "TPU Lila", 50};
   spoolCnt = 3;
   */
 }
 
 void saveSpools() {
-  /* spools[0] = {1, "PLA Rot", 22};
-  spools[1] = {2, "PETG Blau", 0};
-  spools[2] = {3, "TPU Lila", 50};
+  /* spools[0] = {1, "SP-01", "PLA Rot", 22};
+  spools[1] = {2, "SP-02", "PETG Blau", 0};
+  spools[2] = {3, "SP-03", "TPU Lila", 50};
   spoolCnt = 3; */
     
   const size_t bufferSize = JSON_ARRAY_SIZE(spoolCnt) + JSON_OBJECT_SIZE(1) + spoolCnt*JSON_OBJECT_SIZE(3) + (30+(spoolCnt*30));
@@ -289,6 +307,7 @@ void saveSpools() {
     if(spools[i].id == NULL) break;
     JsonObject step = block.createNestedObject();
     step["id"] = spools[i].id;
+    step["ident"] = spools[i].ident;
     step["name"] = spools[i].name;
     step["length"] = spools[i].length;
   }
@@ -302,15 +321,73 @@ void saveSpools() {
 }
 
 void selectSpool(int state){
-  int lineHeight;
-
   displayStatus = DISPLAY_SPOOLSELECT;
+  int lineHeight, nextLineAt;
+  boolean buttonDirection;
+  boolean show_back = false;
+  boolean show_next = true;
+  int counter = 0;
+  static int item_selected = 0;
+  static int buff = 0;
+
+  buttonDirection = getDirection();  
+
+  if(state == SPOOL_SELECTED) {
+    selected = item_selected;
+    oldPos = spools[selected].length;
+    myEnc.setPosition(oldPos);  // continue at spool count
+    showCounting();
+    return;
+  }
+
+  if(state == ITEM_SWITCHED) {
+    if(buff == 0) { // only every 2nd step
+      buff = 1;
+      return;
+    }
+    buff = 0;
+    if(buttonDirection == LEFT && item_selected > 0) item_selected--;
+    if(buttonDirection == RIGHT && item_selected < (spoolCnt - 1)) item_selected++;
+  }
+
+  if(item_selected <= 0) {
+    show_back = false;
+    show_next = true;
+  } else if(item_selected >= spoolCnt-1){
+    show_back = true;
+    show_next = false;
+  } else {
+    show_back = true;
+    show_next = true;
+  }
+
   display.clearDisplay();
-  u8g2.setFont(TEXT_FONT);
-  lineHeight = u8g2.getFontAscent()+4;    // +4 because umlauts and some air:)  
+  u8g2.setFont(MENU_ITEM_FONT);
+  lineHeight = lineHeightMenu; 
   printC(CENTER, lineHeight, MSG_SPOOL_TITLE, false, "-");
   display.drawLine(0, lineHeight+2, SCREEN_WIDTH, lineHeight+2, WHITE);
-    
+
+  // Show spool information
+  nextLineAt = lineHeight + lineHeight;
+  u8g2.setCursor(0, nextLineAt);
+  u8g2.println(spools[item_selected].ident);
+  u8g2.setFont(TEXT_FONT); // 10 pixel font
+  nextLineAt = nextLineAt + lineHeightText;
+  u8g2.setCursor(0, nextLineAt);
+  u8g2.println(spools[item_selected].name);
+  u8g2.setFont(MENU_ITEM_FONT);
+  nextLineAt = nextLineAt + lineHeightMenu;
+  u8g2.setCursor(0, nextLineAt);
+  u8g2.println(spools[item_selected].length);
+  nextLineAt = SCREEN_HEIGHT;
+  if(show_back) {
+    u8g2.setCursor(0, nextLineAt);
+    u8g2.print(" <<");  
+  }
+  if(show_next) {
+    u8g2.setCursor((SCREEN_WIDTH - u8g2.getUTF8Width(">> ")), nextLineAt);
+    u8g2.print(">> ");  
+  }
   display.display();
   
   Serial.println("Look at these spools!");
@@ -325,10 +402,16 @@ void showSelection(int state){
   boolean buttonDirection;
   int counter = 0;
   static int item_selected = 0;
+  static int buff = 0;
 
   buttonDirection = getDirection();  
 
   if(state == ITEM_SWITCHED) {
+    if(buff == 0) { // only every 2nd step
+      buff = 1;
+      return;
+    }
+    buff = 0;    
     if(buttonDirection == LEFT && item_selected > 0) item_selected--;
     if(buttonDirection == RIGHT && item_selected < (items_size - 1)) item_selected++;
   }
@@ -340,7 +423,7 @@ void showSelection(int state){
           return;
           break;
       case 1:
-          selectSpool(ITEM_SELECTED); // TODO: Spool_selected
+          selectSpool(SPOOL_SELECTED);
           return;
           break;
       case 2:
@@ -353,7 +436,7 @@ void showSelection(int state){
   }
       
   u8g2.setFont(MENU_ITEM_FONT);
-  lineHeight = u8g2.getFontAscent()+2;
+  lineHeight = lineHeightMenu;
   nextLineAt = lineHeight * 2 + 2 ;  // Can't remember why *2 but it works
   
   display.fillRect(20, 10, 88, 44, BLACK);
@@ -373,16 +456,18 @@ void showStart(){
   display.clearDisplay();
   u8g2.setForegroundColor(WHITE);
   u8g2.setFont(TEXT_FONT); // 10 pixel font
+  lineHeightText = u8g2.getFontAscent()+3;    // +4 because umlauts and some air:)
   u8g2.setCursor(0, 11);
   u8g2.println(MSG_TITLE);
   u8g2.setFont(MENU_ITEM_FONT);
+  lineHeightMenu = u8g2.getFontAscent()+3;    // +4 because umlauts and some air:)
   u8g2.println(MSG_INIT);
   display.display();
   delay(2000);
 }
 
 void showCounting() {
-  selected = 0;
+  //selected = 0;
 
   displayStatus = DISPLAY_COUNTING;
   display.clearDisplay();
@@ -394,7 +479,8 @@ void showCounting() {
   // Werte zählen und anzeigen
   newPos = myEnc.getPosition();
   oldPos = newPos;
-  u8g2.print(oldPos);
+  spools[selected].length = newPos;
+  u8g2.print(spools[selected].length);
   display.display();
 }
 
@@ -430,19 +516,24 @@ void setup() {
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   u8g2.begin(display);
   SPI.begin();                      // Initialisiere SPI Kommunikation
-  bool Result  = InitalizeFileSystem();   
-  displayStatus = DISPLAY_INIT;
-  //saveSpools();
-  loadSpools();
- // saveSpools();
-  showStart();
-
+  bool Result  = InitalizeFileSystem();
+  
   // Interrupt auf Pin D7 für Button, D5 & D6 für Rotary -> funktioniert schlechter als DO_NOT_USE_INTERRUPTS
   myEnc.begin();
   attachInterrupt(digitalPinToInterrupt(D5), handleRotation, CHANGE);
   attachInterrupt(digitalPinToInterrupt(D6), handleRotation, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(D7), handleKey, RISING);
-  myEnc.setPosition(0);
+  attachInterrupt(digitalPinToInterrupt(D7), handleKey, RISING);  
+  
+  displayStatus = DISPLAY_INIT;
+  
+  loadSpools();
+  myEnc.setPosition(spools[selected].length);
+  Serial.print("Selected: ");
+  Serial.println(spools[selected].name);
+  Serial.print("Length: ");
+  Serial.println(spools[selected].length);  
+ // saveSpools();
+  showStart();
   
   displayStatus = DISPLAY_COUNTING;
 }
@@ -457,6 +548,7 @@ void loop() {
             // do nothing
             break;
       case DISPLAY_COUNTING:
+            saveSpools();
             showMenu(INIT);
             break;
       case DISPLAY_MENU:
@@ -488,6 +580,9 @@ void loop() {
             break;
       case DISPLAY_SELECTION:
             showSelection(ITEM_SWITCHED);
+            break;
+      case DISPLAY_SPOOLSELECT:
+            selectSpool(ITEM_SWITCHED);
             break;
       default:
             break;
