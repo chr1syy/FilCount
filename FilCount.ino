@@ -11,8 +11,9 @@
 #include <RotaryEncoder.h>
 #include <ESP8266WiFi.h>
 #include "languages.h"
+#include "server.h"
 
-#define VERSION "0.2 PRE ALPHA TEST"
+#define VERSION "V0.3 BETA"
 
 #define NUMBER_OF_SPOOLS 50
 
@@ -33,6 +34,7 @@
 #define DISPLAY_CONFIG 3
 #define DISPLAY_SPOOLSELECT 4
 #define DISPLAY_SELECTION 5
+#define DISPLAY_WIFI 6
 
 #define ITEM_SELECTED  1
 #define ITEM_SWITCHED  2
@@ -70,8 +72,8 @@ int16_t position = 1;  // Init screen resets position to 0, so change position i
 struct filamentSpools
   {
     int id;
-    String ident;
-    String name;
+    const char* ident;
+    const char* name;
     int length;
   };
 filamentSpools spools[NUMBER_OF_SPOOLS];
@@ -97,6 +99,7 @@ void showCounting();
 void saveSpools();
 void selectSpool(int);
 void showSelection(int);
+void showWifi();
 
 // posX     = X position in pixel (CENTER for centered output)
 // posY     = Y position in pixel (BOTTOM LEFT)
@@ -213,6 +216,10 @@ void showMenu(int state){
           selectSpool(INIT);
           return;
           break;
+      case 2:
+          showWifi();
+          return;
+          break;          
       default:
           break;
     }
@@ -261,10 +268,10 @@ void loadSpools() {
         tmpId = jspools[i]["id"];   // JsonArray is overloaded in mysterious ways ;)
         if(tmpId != 0) {
           spools[i].id     = tmpId;
-          tmpName          = jspools[i]["ident"];
-          spools[i].ident  = String(tmpName);
-          tmpName          = jspools[i]["name"];
-          spools[i].name   = String(tmpName);
+         // tmpName          = jspools[i]["ident"];
+          spools[i].ident  = jspools[i]["ident"];
+          //tmpName          = jspools[i]["name"];
+          spools[i].name   = jspools[i]["name"];
           spools[i].length = jspools[i]["length"];
         } else {
           spoolCnt = i;
@@ -450,6 +457,35 @@ void showSelection(int state){
   display.display();
 }
 
+void showWifi(){
+  displayStatus = DISPLAY_WIFI;
+  int lineHeight;
+  int nextLineAt = 0;
+  char Ip[] = "xxx.xxx.xxx.xxx";
+  IPAddress ip = WiFi.localIP();
+  //ip.toString().toCharArray(Ip, 16);  // this looks not good at all
+  sprintf(Ip, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+  
+  display.clearDisplay();
+  u8g2.setFont(TEXT_FONT);
+  lineHeight = lineHeightText;
+  printC(CENTER, lineHeight, MSG_WIFI_TITLE, false, "-");
+  display.drawLine(0, lineHeight+2, SCREEN_WIDTH, lineHeight+2, WHITE);
+
+  nextLineAt = lineHeight * 2 + 5;
+  
+  if(strcmp(Ip, "0.0.0.0") != 0 ){
+     display.setTextWrap(true);
+     printC(CENTER, nextLineAt, ssid, false);
+     nextLineAt = nextLineAt + lineHeightText + 6;
+     printC(CENTER, nextLineAt, Ip, false);
+  } else {
+    printC(CENTER, nextLineAt, MSG_NO_WIFI, false);
+  }
+
+  display.display();
+}
+
 void showStart(){
   // TODO: a nice an breathtaking startup sequence with gfx, animation and totally important information
   // RealityCheck: for now (and probably forever) some boring infos
@@ -512,7 +548,31 @@ void setup() {
   Serial.print(F("  "));
   Serial.println(__DATE__);
   Serial.println(__FILE__);   
-  
+
+  ArduinoOTA.begin(); // OTA Upload via ArduinoIDE
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.println("");
+  Serial.print(F("Connecting to "));
+  Serial.println(ssid);
+  // Wait for connection
+  int intRetry = 0;
+  while ((WiFi.status() != WL_CONNECTED) && (intRetry < 20)){
+    Serial.print(F("."));
+    intRetry++;
+    delay(500);
+  }
+
+  Serial.println("");
+  Serial.print(F("Connected to "));
+  Serial.println(ssid);
+  Serial.print(F("IP address: "));
+  Serial.println(WiFi.localIP());
+
+  if (MDNS.begin("esp8266")) {
+    Serial.println(F("MDNS responder started"));
+  }
+
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   u8g2.begin(display);
   SPI.begin();                      // Initialisiere SPI Kommunikation
@@ -554,6 +614,9 @@ void loop() {
       case DISPLAY_MENU:
             showMenu(ITEM_SELECTED);
             break;
+      case DISPLAY_WIFI:
+            showMenu(INIT);
+            break;            
       case DISPLAY_CONFIG:
             //showConfig(ITEM_SELECTED);
             break;
