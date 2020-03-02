@@ -9,7 +9,13 @@
 #include <u8g2_fonts.h>
 #include <U8g2_for_Adafruit_GFX.h>
 #include <RotaryEncoder.h>
+#include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
+//#include <WiFiClient.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h> // OTA Upload via ArduinoIDE
+
 #include "languages.h"
 #include "server.h"
 
@@ -592,18 +598,9 @@ void setup() {
   Serial.println(F(__DATE__));
   Serial.println(F(__FILE__));   
 
-//  ArduinoOTA.begin(); // OTA Upload via ArduinoIDE
-
-  if (MDNS.begin("esp8266")) {
-    Serial.println(F("MDNS responder started"));
-  }
-
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   u8g2.begin(display);
-  //SPI.begin();                      // Initialisiere SPI Kommunikation
-  server.begin();
-  spiffs();
-  admin();
+  
   bool Result  = InitalizeFileSystem();
   
   // Interrupt auf Pin D7 für Button, D5 & D6 für Rotary -> funktioniert schlechter als DO_NOT_USE_INTERRUPTS
@@ -622,11 +619,21 @@ void setup() {
   Serial.println(spools[selected].length);  
  // saveSpools();
   showStart();
+  startOTA();
+  
+  server.begin();
+  spiffs();
+  admin();
+
+//  if (MDNS.begin("esp8266")) {
+//    Serial.println(F("MDNS responder started"));
+//  }
   
   displayStatus = DISPLAY_COUNTING;
 }
 
 void loop() {
+  ArduinoOTA.handle();
   server.handleClient();
   u8g2.setFont(TEXT_FONT);
   runtime();

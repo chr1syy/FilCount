@@ -38,7 +38,7 @@ void admin() {                          // Funktionsaufruf "admin();" muss im Se
     if (newhostname != "") {
       WiFi.hostname(newhostname.substring(1, newhostname.length() - 1));
       file.close();
-//      ArduinoOTA.setHostname(WiFi.hostname().c_str());
+      ArduinoOTA.setHostname(WiFi.hostname().c_str());
     }
   }
   server.on("/admin/renew", handlerenew);
