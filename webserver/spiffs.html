@@ -1,0 +1,59 @@
+<!-- For more information visit: https://fipsok.de -->
+<!DOCTYPE HTML>
+<html lang="de">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <link rel="stylesheet" href="spiffs.css">
+      <title>Esp8266 Datei Manager</title>
+      <script>
+        document.addEventListener('DOMContentLoaded', () => {
+          let myList = document.querySelector('main');
+          fetch('json').then(function (response) {
+            return response.json();
+          }).then(function (json) {
+            for (var i = 0; i < json.length - 1; i++) {
+              let dir = `<li><a href="${json[i].name}">${json[i].name}</a><small> ${json[i].size}</small>`;
+			  dir += `<a href="${json[i].name}"download="${json[i].name}"> Download </a>or <a href="${json[i].name}?delete=/${json[i].name}">Delete </a>`;
+              myList.insertAdjacentHTML('beforeend', dir);
+            }
+            myList.insertAdjacentHTML('beforeend', `<li><b>SPIFFS</b> belegt ${json[i].usedBytes} von ${json[i].totalBytes}`);
+			document.querySelectorAll('[href*=delete]').forEach((node) => {
+			  node.addEventListener('click', () => {
+	            if (!confirm('Sicher!')) event.preventDefault();
+	          });
+		    });
+            free = json[i].freeBytes;
+          });
+          fs.addEventListener('change', () => {
+            let bytes = event.target.files[0].size;
+            let unit = [' Byte', ' KB', ' MB', ' GB'];
+            let i = Math.floor(Math.log(bytes) / Math.log(1024));
+            let sOutput = parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + unit[i];
+            if (bytes > free) {
+              si.innerHTML = `<li><b> ${sOutput}</b> <strong style="color: red;"> Ungenügend Speicher frei </strong></li>`;
+              up.setAttribute('disabled', 'disabled');
+            } 
+            else {
+              si.innerHTML = `<li><b>Dateigröße:</b> ${sOutput} </li>`;
+              up.removeAttribute('disabled');
+            }
+          });
+		  btn.addEventListener('click', () => {
+	        if (!confirm(`Wirklich formatieren? Alle Daten gehen verloren.\nDu musst anschließend spiffs.html wieder laden.`)) event.preventDefault();
+	      });
+	    });
+      </script>
+   </head>
+   <body>
+      <h2>ESP8266 Datei Manager</h2>
+      <form action="/upload" method="POST" enctype="multipart/form-data"><input id="fs" type="file" name="upload">
+         <input id="up" type="submit" value="Upload" disabled>
+      </form>
+      <div>
+         <span id="si"></span>
+         <main></main>
+      </div>
+      <form action="/format" method="POST"><input id="btn" type="submit" value="Format SPIFFS"></form>
+   </body>
+</html>

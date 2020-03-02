@@ -1,6 +1,6 @@
 // Libraries
 
-#include <SPI.h>
+//#include <SPI.h>
 #include <Wire.h>
 #include <FS.h>           // Include the SPIFFS library
 #include <ArduinoJson.h>
@@ -100,6 +100,7 @@ void saveSpools();
 void selectSpool(int);
 void showSelection(int);
 void showWifi();
+void StartupWiFi();
 
 // posX     = X position in pixel (CENTER for centered output)
 // posY     = Y position in pixel (BOTTOM LEFT)
@@ -456,16 +457,20 @@ void showSelection(int state){
   }  
   display.display();
 }
+void Ip2chr(char Ip[]) {
+  IPAddress ip = WiFi.localIP();
+
+  //ip.toString().toCharArray(Ip, 16);  // this looks not good at all
+  sprintf(Ip, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+}
 
 void showWifi(){
+  char Ip[] = "xxx.xxx.xxx.xxx";
+  
   displayStatus = DISPLAY_WIFI;
   int lineHeight;
   int nextLineAt = 0;
-  char Ip[] = "xxx.xxx.xxx.xxx";
-  IPAddress ip = WiFi.localIP();
-  //ip.toString().toCharArray(Ip, 16);  // this looks not good at all
-  sprintf(Ip, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-  
+
   display.clearDisplay();
   u8g2.setFont(TEXT_FONT);
   lineHeight = lineHeightText;
@@ -473,7 +478,8 @@ void showWifi(){
   display.drawLine(0, lineHeight+2, SCREEN_WIDTH, lineHeight+2, WHITE);
 
   nextLineAt = lineHeight * 2 + 5;
-  
+
+  Ip2chr(Ip);
   if(strcmp(Ip, "0.0.0.0") != 0 ){
      display.setTextWrap(true);
      printC(CENTER, nextLineAt, ssid, false);
@@ -494,11 +500,12 @@ void showStart(){
   u8g2.setFont(TEXT_FONT); // 10 pixel font
   lineHeightText = u8g2.getFontAscent()+3;    // +4 because umlauts and some air:)
   u8g2.setCursor(0, 11);
-  u8g2.println(MSG_TITLE);
+  u8g2.println(F(MSG_TITLE));
   u8g2.setFont(MENU_ITEM_FONT);
   lineHeightMenu = u8g2.getFontAscent()+3;    // +4 because umlauts and some air:)
-  u8g2.println(MSG_INIT);
+  u8g2.println(F(MSG_INIT));
   display.display();
+  StartupWiFi();
   delay(2000);
 }
 
@@ -538,36 +545,54 @@ boolean InitalizeFileSystem() {
   return initok;
 }
 
+void StartupWiFi(){
+  char Ip[] = "xxx.xxx.xxx.xxx";
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.println("");
+  Serial.print(F("Connecting to "));
+  Serial.println(ssid);
+  u8g2.println(F(MSG_SEARCH_WIFI));
+  display.display();
+  // Wait for connection
+  int intRetry = 0;
+  while ((WiFi.status() != WL_CONNECTED) && (intRetry < WIFI_RETRIES)){
+    Serial.print(".");
+    u8g2.print(".");
+    display.display();
+    intRetry++;
+    delay(500);
+  }
+
+  Serial.println("");
+  Ip2chr(Ip);
+  if(strcmp(Ip, "0.0.0.0") != 0 ){
+    Serial.print(F("Connected to "));
+    Serial.println(ssid);
+    Serial.print(F("IP address: "));    
+    Serial.println(Ip);
+    u8g2.println(F(MSG_FOUND_WIFI));
+    display.display();    
+  } else {
+    Serial.println(F(MSG_NO_WIFI));
+    u8g2.println(F(MSG_NO_WIFI));
+    display.display();    
+  }
+}
+
 void setup() { 
   Serial.begin(9600);
   Serial.println();
   Serial.print(F("Version: "));
   Serial.println(F(VERSION));
   Serial.print(F("Build: "));
-  Serial.print(__TIME__);
+  Serial.print(F(__TIME__));
   Serial.print(F("  "));
-  Serial.println(__DATE__);
-  Serial.println(__FILE__);   
+  Serial.println(F(__DATE__));
+  Serial.println(F(__FILE__));   
 
-  ArduinoOTA.begin(); // OTA Upload via ArduinoIDE
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.println("");
-  Serial.print(F("Connecting to "));
-  Serial.println(ssid);
-  // Wait for connection
-  int intRetry = 0;
-  while ((WiFi.status() != WL_CONNECTED) && (intRetry < 20)){
-    Serial.print(F("."));
-    intRetry++;
-    delay(500);
-  }
-
-  Serial.println("");
-  Serial.print(F("Connected to "));
-  Serial.println(ssid);
-  Serial.print(F("IP address: "));
-  Serial.println(WiFi.localIP());
+//  ArduinoOTA.begin(); // OTA Upload via ArduinoIDE
 
   if (MDNS.begin("esp8266")) {
     Serial.println(F("MDNS responder started"));
@@ -575,7 +600,10 @@ void setup() {
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   u8g2.begin(display);
-  SPI.begin();                      // Initialisiere SPI Kommunikation
+  //SPI.begin();                      // Initialisiere SPI Kommunikation
+  server.begin();
+  spiffs();
+  admin();
   bool Result  = InitalizeFileSystem();
   
   // Interrupt auf Pin D7 für Button, D5 & D6 für Rotary -> funktioniert schlechter als DO_NOT_USE_INTERRUPTS
@@ -588,9 +616,9 @@ void setup() {
   
   loadSpools();
   myEnc.setPosition(spools[selected].length);
-  Serial.print("Selected: ");
+  Serial.print(F("Selected: "));
   Serial.println(spools[selected].name);
-  Serial.print("Length: ");
+  Serial.print(F("Length: "));
   Serial.println(spools[selected].length);  
  // saveSpools();
   showStart();
@@ -599,7 +627,9 @@ void setup() {
 }
 
 void loop() {
+  server.handleClient();
   u8g2.setFont(TEXT_FONT);
+  runtime();
   
   if(isButtonPressed) {
     isButtonPressed = false;
