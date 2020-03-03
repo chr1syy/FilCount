@@ -18,6 +18,7 @@
 
 #include "languages.h"
 #include "server.h"
+#include "logo.h"
 
 #define VERSION "V0.3 BETA"
 
@@ -600,6 +601,10 @@ void setup() {
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   u8g2.begin(display);
+  display.clearDisplay();
+  display.drawBitmap(0, 0, logo, 128, 64, 1);
+  display.display();  
+  delay(1000);
   
   bool Result  = InitalizeFileSystem();
   
